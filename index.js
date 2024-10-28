@@ -2,9 +2,9 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const yargs = require('yargs');
-const finder = require('./finder');
-const decrypter = require('./decrypter');
-const unpacker = require('./unpacker');
+const finder = require('@mini-program-unpacker/finder');
+const decrypter = require('@mini-program-unpacker/decrypter');
+const unpacker = require('@mini-program-unpacker/unpacker');
 
 // 配置命令行参数
 const argv = yargs

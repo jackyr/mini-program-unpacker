@@ -1,15 +1,13 @@
 {
-  "name": "pc_wxapkg_decrypt_nodejs",
+  "name": "@mini-program-unpacker/finder",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js --in=../output/raw/ --out=../output/dec/",
+    "start": "node index.js --src=../input --dest=../output/raw",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
+    "@mini-program-unpacker/common": "^1.0.0",
     "yargs": "^17.7.2"
   }
 }

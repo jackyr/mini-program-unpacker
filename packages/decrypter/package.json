@@ -1,15 +1,13 @@
 {
-  "name": "finder",
+  "name": "@mini-program-unpacker/decrypter", 
   "version": "1.0.0",
-  "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js --src=../input --dest=../output/raw",
+    "start": "node index.js --in=../output/raw/ --out=../output/dec/",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
   "dependencies": {
+    "@mini-program-unpacker/common": "^1.0.0",
     "yargs": "^17.7.2"
   }
 }

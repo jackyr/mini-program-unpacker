@@ -1,16 +1,16 @@
 {
   "name": "mini-program-unpacker",
-  "version": "1.0.0",
-  "description": "",
+  "private": true,
   "main": "index.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "start": "node index.js",
     "test": "node index.js --input=./input --output=./output",
     "test-single": "node index.js --input=./input/test.wxapkg --output=./output --wxid=wx1234567890abcdef"
   },
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "yargs": "^17.7.2"
+  "devDependencies": {
+    "lerna": "^8.1.8"
   }
 }
