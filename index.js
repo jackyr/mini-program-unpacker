@@ -22,11 +22,20 @@ const argv = yargs
     alias: 'o',
     type: 'string',
     description: '输出目录路径',
-    default: './output',
+    default: path.join(
+      os.homedir(),
+      'Documents/unpack_wxapkg_output'
+    ),
   })
   .option('wxid', {
     type: 'string',
     description: '小程序ID（处理单个文件时可选）'
+  })
+  .option('watch', {
+    alias: 'w',
+    type: 'boolean',
+    description: '监听输入目录变动',
+    default: false
   })
   .help().argv;
 
@@ -46,18 +55,32 @@ function getInputType(inputPath) {
   }
 }
 
-// 创建处理流程
-async function process() {
+// 文件监听功能
+function watchInput(inputPath) {
+  logger.log(logger.LOG_FORMAT.INFO, '开始监听文件变动...');
+  
+  fs.watch(inputPath, { recursive: true }, async (eventType, filename) => {
+    logger.log(logger.LOG_FORMAT.INFO, `检测到文件变动: ${filename}`);
+    await startProcess();
+  });
+}
+
+// 开始处理流程
+async function startProcess() {
   try {
+    const outputPath = argv.output.startsWith('~') 
+      ? path.join(os.homedir(), argv.output.slice(1))
+      : path.resolve(argv.output);
+    
     // 确保输出目录存在
-    if (!fs.existsSync(argv.output)) {
-      fs.mkdirSync(argv.output, { recursive: true });
+    if (!fs.existsSync(outputPath)) {
+      fs.mkdirSync(outputPath, { recursive: true });
     }
 
     const inputType = getInputType(argv.input);
-    const rawDir = path.join(argv.output, 'raw');
-    const decDir = path.join(argv.output, 'dec');
-    const unpackDir = path.join(argv.output, 'unpack');
+    const rawDir = path.join(outputPath, 'raw');
+    const decDir = path.join(outputPath, 'dec');
+    const unpackDir = path.join(outputPath, 'unpack');
 
     if (inputType === 'directory') {
       // 目录处理流程
@@ -98,9 +121,17 @@ async function process() {
     console.log('unpack/ - 解包后的源代码文件');
   } catch (err) {
     console.error('处理过程出错:', err);
-    process.exit(1);
+    logger.log(logger.LOG_FORMAT.ERROR, err.message);
   }
 }
 
-// 执行处理流程
-process();
+async function main() {
+  await startProcess();
+
+  // 如果开启了监听模式，则启动文件监听
+  if (argv.watch) {
+    watchInput(argv.input);
+  }
+}
+
+main();
