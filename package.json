@@ -6,9 +6,9 @@
     "packages/*"
   ],
   "scripts": {
-    "start": "node index.js",
-    "test": "node index.js --input=./input --output=./output",
-    "test-single": "node index.js --input=./input/test.wxapkg --output=./output --wxid=wx1234567890abcdef"
+    "start": "node scripts/run.js",
+    "test": "node scripts/run.js --input=./input --output=./output",
+    "test-single": "node scripts/run.js --input=./input/test.wxapkg --output=./output --wxid=wx1234567890abcdef"
   },
   "devDependencies": {
     "lerna": "^8.1.8"
