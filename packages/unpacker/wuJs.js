@@ -3,9 +3,17 @@ const path = require("path");
 const UglifyJS = require("uglify-es");
 const {js_beautify} = require("js-beautify");
 const {VM} = require('vm2');
+const { logger } = require('@mini-program-unpacker/common');
 
 function jsBeautify(code) {
-    return UglifyJS.minify(code, {mangle: false, compress: false, output: {beautify: true, comments: true}}).code;
+    return UglifyJS.minify(code, {
+        mangle: false, 
+        compress: false, 
+        output: {
+            beautify: true, 
+            comments: true
+        }
+    }).code;
 }
 
 function splitJs(name, cb, mainDir) {
@@ -14,45 +22,46 @@ function splitJs(name, cb, mainDir) {
     if (isSubPkg) {
         dir = mainDir;
     }
+    
     wu.get(name, code => {
-        let needDelList = {};
-        let vm = new VM({
-            sandbox: {
-                require() {
-                },
-                define(name, func) {
-                    let code = func.toString();
-                    code = code.slice(code.indexOf("{") + 1, code.lastIndexOf("}") - 1).trim();
-                    let bcode = code;
-                    if (code.startsWith('"use strict";') || code.startsWith("'use strict';")) code = code.slice(13);
-                    else if ((code.startsWith('(function(){"use strict";') || code.startsWith("(function(){'use strict';")) && code.endsWith("})();")) code = code.slice(25, -5);
-                    let res = jsBeautify(code);
-                    if (typeof res == "undefined") {
-                        console.log("Fail to delete 'use strict' in \"" + name + "\".");
-                        res = jsBeautify(bcode);
-                    }
-                    console.log(dir, name);
-                    needDelList[path.resolve(dir, name)] = -8;
-                    wu.save(path.resolve(dir, name), jsBeautify(res));
-                },
-                definePlugin() {
-                },
-                requirePlugin() {
+        try {
+            let needDelList = {};
+            let vm = new VM({
+                sandbox: {
+                    require() {},
+                    define(name, func) {
+                        try {
+                            let code = func.toString();
+                            code = code.slice(code.indexOf("{") + 1, code.lastIndexOf("}") - 1).trim();
+                            let res = jsBeautify(code);
+                            
+                            needDelList[path.resolve(dir, name)] = -8;
+                            wu.save(path.resolve(dir, name), jsBeautify(res));
+                        } catch(e) {
+                            logger.logWarn(`处理${path.basename(name)}时出错: ${e.message}`);
+                        }
+                    },
+                    definePlugin() {},
+                    requirePlugin() {}
                 }
+            });
+
+            if (isSubPkg) {
+                code = code.slice(code.indexOf("define("));
             }
-        });
-        if (isSubPkg) {
-            code = code.slice(code.indexOf("define("));
+
+            vm.run(code);
+            if (!needDelList[name]) needDelList[name] = 8;
+            cb(needDelList);
+        } catch(e) {
+            console.log(`[错误] 处理${path.basename(name)}失败: ${e.message}`);
+            cb({[name]: 8});
         }
-        console.log('splitJs: ' + name);
-        vm.run(code);
-        console.log("Splitting \"" + name + "\" done.");
-        if (!needDelList[name]) needDelList[name] = 8;
-        cb(needDelList);
     });
 }
 
-module.exports = {jsBeautify: jsBeautify, wxsBeautify: js_beautify, splitJs: splitJs};
-if (require.main === module) {
-    wu.commandExecute(splitJs, "Split and beautify weapp js file.\n\n<files...>\n\n<files...> js files to split and beautify.");
-}
+module.exports = {
+    jsBeautify,
+    wxsBeautify: js_beautify,
+    splitJs
+};

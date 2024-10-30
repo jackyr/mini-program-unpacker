@@ -104,24 +104,35 @@ function doWxss(dir, cb, mainDir, nowDir) {
 	}
 
     function runVM(name, code) {
-        let wxAppCode = {}, handle = {cssFile: name};
-        let vm = new VM({
-            sandbox: Object.assign(new GwxCfg(), {
-                __wxAppCode__: wxAppCode,
-                setCssToHead: cssRebuild.bind(handle),
-                $gwx(path, global) {
+        try {
+            let wxAppCode = {}, handle = {cssFile: name};
+            let vm = new VM({
+                sandbox: Object.assign(new GwxCfg(), {
+                    __wxAppCode__: wxAppCode,
+                    setCssToHead: cssRebuild.bind(handle),
+                    $gwx(path, global) {}
+                })
+            });
 
-                }
-            })
-        });
-
-        // console.log('do css runVm: ' + name);
-		vm.run(code);
-        for (let name in wxAppCode) {
-            handle.cssFile = path.resolve(saveDir, name);
-            if (name.endsWith(".wxss")) {
-                wxAppCode[name]();
+            try {
+                vm.run(code);
+            } catch(e) {
+                console.warn(`Failed to run VM for ${name}:`, e.message);
+                return;
             }
+
+            for (let name in wxAppCode) {
+                try {
+                    handle.cssFile = path.resolve(saveDir, name);
+                    if (name.endsWith(".wxss")) {
+                        wxAppCode[name]();
+                    }
+                } catch(e) {
+                    console.warn(`Failed to process wxss ${name}:`, e.message);
+                }
+            }
+        } catch(e) {
+            console.error(`Error in runVM for ${name}:`, e);
         }
     }
 
@@ -152,62 +163,67 @@ function doWxss(dir, cb, mainDir, nowDir) {
     }
 
     function transformCss(style) {
-        let ast = csstree.parse(style);
-        csstree.walk(ast, function (node) {
-            if (node.type == "Comment") {//Change the comment because the limit of css-tree
-                node.type = "Raw";
-                node.value = "\n/*" + node.value + "*/\n";
+        try {
+            let ast = csstree.parse(style);
+            csstree.walk(ast, function (node) {
+                if (node.type == "Comment") {//Change the comment because the limit of css-tree
+                    node.type = "Raw";
+                    node.value = "\n/*" + node.value + "*/\n";
 			}
-            if (node.type == "TypeSelector") {
-                if (node.name.startsWith("wx-")) node.name = node.name.slice(3);
-                else if (node.name == "body") node.name = "page";
+                if (node.type == "TypeSelector") {
+                    if (node.name.startsWith("wx-")) node.name = node.name.slice(3);
+                    else if (node.name == "body") node.name = "page";
 			}
-            if (node.children) {
-                const removeType = ["webkit", "moz", "ms", "o"];
-                let list = {};
-                node.children.each((son, item) => {
-                    if (son.type == "Declaration") {
-                        if (list[son.property]) {
-                            let a = item, b = list[son.property], x = son, y = b.data, ans = null;
-                            if (x.value.type == 'Raw' && x.value.value.startsWith("progid:DXImageTransform")) {
-								node.children.remove(a);
-                                ans = b;
-                            } else if (y.value.type == 'Raw' && y.value.value.startsWith("progid:DXImageTransform")) {
-								node.children.remove(b);
-                                ans = a;
-                            } else {
-                                let xValue = x.value.children && x.value.children.head && x.value.children.head.data.name,
-                                    yValue = y.value.children && y.value.children.head && y.value.children.head.data.name;
-                                if (xValue && yValue) for (let type of removeType) if (xValue == `-${type}-${yValue}`) {
+                if (node.children) {
+                    const removeType = ["webkit", "moz", "ms", "o"];
+                    let list = {};
+                    node.children.each((son, item) => {
+                        if (son.type == "Declaration") {
+                            if (list[son.property]) {
+                                let a = item, b = list[son.property], x = son, y = b.data, ans = null;
+                                if (x.value.type == 'Raw' && x.value.value.startsWith("progid:DXImageTransform")) {
 									node.children.remove(a);
                                     ans = b;
-									break;
-                                } else if (yValue == `-${type}-${xValue}`) {
+                                } else if (y.value.type == 'Raw' && y.value.value.startsWith("progid:DXImageTransform")) {
 									node.children.remove(b);
                                     ans = a;
-									break;
                                 } else {
-                                    let mValue = `-${type}-`;
-                                    if (xValue.startsWith(mValue)) xValue = xValue.slice(mValue.length);
-                                    if (yValue.startsWith(mValue)) yValue = yValue.slice(mValue.length);
+                                    let xValue = x.value.children && x.value.children.head && x.value.children.head.data.name,
+                                        yValue = y.value.children && y.value.children.head && y.value.children.head.data.name;
+                                    if (xValue && yValue) for (let type of removeType) if (xValue == `-${type}-${yValue}`) {
+										node.children.remove(a);
+                                        ans = b;
+										break;
+                                    } else if (yValue == `-${type}-${xValue}`) {
+										node.children.remove(b);
+                                        ans = a;
+										break;
+                                    } else {
+                                        let mValue = `-${type}-`;
+                                        if (xValue.startsWith(mValue)) xValue = xValue.slice(mValue.length);
+                                        if (yValue.startsWith(mValue)) yValue = yValue.slice(mValue.length);
+									}
+                                    if (ans === null) ans = b;
 								}
-                                if (ans === null) ans = b;
-							}
-                            list[son.property] = ans;
-                        } else list[son.property] = item;
-					}
-				});
-                for (let name in list) if (!name.startsWith('-'))
-                    for (let type of removeType) {
-                        let fullName = `-${type}-${name}`;
-                        if (list[fullName]) {
-							node.children.remove(list[fullName]);
-							delete list[fullName];
+                                list[son.property] = ans;
+                            } else list[son.property] = item;
 						}
-					}
-			}
-		});
-        return cssbeautify(csstree.generate(ast), {indent: '    ', autosemicolon: true});
+					});
+                    for (let name in list) if (!name.startsWith('-'))
+                        for (let type of removeType) {
+                            let fullName = `-${type}-${name}`;
+                            if (list[fullName]) {
+								node.children.remove(list[fullName]);
+								delete list[fullName];
+							}
+						}
+				}
+			});
+            return cssbeautify(csstree.generate(ast), {indent: '    ', autosemicolon: true});
+        } catch(e) {
+            console.warn('Failed to transform CSS:', e.message);
+            return style; // 返回原始样式
+        }
     }
 
     wu.scanDirByExt(dir, ".html", files => {
@@ -283,30 +299,30 @@ function doWxss(dir, cb, mainDir, nowDir) {
             let vm = new VM({sandbox: {}});
             pureData = vm.run(code + "\n_C");
 
-			console.log("Guess wxss(first turn)...");
+			// console.log("Guess wxss(first turn)...");
             preRun(dir, frameFile, mainCode, files, () => {
                 frameName = frameFile;
                 onlyTest = true;
 				runOnce();
                 onlyTest = false;
-                console.log("Import count info: %j", importCnt);
+                // console.log("Import count info: %j", importCnt);
                 for (let id in pureData) if (!actualPure[id]) {
                     if (!importCnt[id]) importCnt[id] = 0;
                     if (importCnt[id] <= 1) {
-                        console.log("Cannot find pure import for _C[" + id + "] which is only imported " + importCnt[id] + " times. Let importing become copying.");
+                        logger.logWarn(`无法找到纯导入 _C[${id}]，导入次数: ${importCnt[id]}，将改为复制`);
                     } else {
                         let newFile = path.resolve(saveDir, "__wuBaseWxss__/" + id + ".wxss");
-                        console.log("Cannot find pure import for _C[" + id + "], force to save it in (" + newFile + ").");
+                        logger.logWarn(`无法找到纯导入 _C[${id}]，强制保存到: ${newFile}`);
                         id = Number.parseInt(id);
                         actualPure[id] = newFile;
                         cssRebuild.call({cssFile: newFile}, id)();
 					}
 				}
-				console.log("Guess wxss(first turn) done.\nGenerate wxss(second turn)...");
+				// console.log("Guess wxss(first turn) done.\nGenerate wxss(second turn)...");
 				runOnce()
-				console.log("Generate wxss(second turn) done.\nSave wxss...");
+				// console.log("Generate wxss(second turn) done.\nSave wxss...");
 
-                console.log('saveDir: ' + saveDir);
+                // console.log('saveDir: ' + saveDir);
                 for (let name in result) {
                     let pathFile = path.resolve(saveDir, wu.changeExt(name, ".wxss"));
                     wu.save(pathFile, transformCss(result[name]));

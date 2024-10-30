@@ -356,11 +356,11 @@ function doWxml(state, dir, name, code, z, xPool, rDs, wxsList, moreInfo) {
 }
 
 function tryWxml(dir, name, code, z, xPool, rDs, ...args) {
-    console.log("Decompile " + name + "...");
+    // console.log("Decompile " + name + "...");
     let state = [null];
     try {
         doWxml(state, dir, name, code, z, xPool, rDs, ...args);
-        console.log("Decompile success!");
+        // console.log("Decompile success!");
     } catch (e) {
         console.log("error on " + name + "(" + (state[0] === null ? "Main" : "Template-" + state[0]) + ")\nerr: ", e);
         if (state[0] === null) wu.save(path.resolve(dir, name + ".ori.js"), code);
@@ -376,48 +376,94 @@ function doWxs(code, name) {
 }
 
 function doFrame(name, cb, order, mainDir) {
-    let moreInfo = order.includes("m");
-    wxsList = {};
-    wu.get(name, code => {
-        getZ(code, z => {
-            const before = "\nvar nv_require=function(){var nnm=";
-            code = code.slice(code.lastIndexOf(before) + before.length, code.lastIndexOf("if(path&&e_[path]){"));
-            json = code.slice(0, code.indexOf("};") + 1);
-            let endOfRequire = code.indexOf("()\r\n") + 4;
-            if (endOfRequire == 4 - 1) endOfRequire = code.indexOf("()\n") + 3;
-            code = code.slice(endOfRequire);
-            let rD = {}, rE = {}, rF = {}, requireInfo = {}, x, vm = new VM({
-                sandbox: {
-                    d_: rD, e_: rE, f_: rF, _vmRev_(data) {
-                        [x, requireInfo] = data;
-                    }, nv_require(path) {
-                        return () => path;
+    console.log(`[进行] 处理模板文件 ${path.basename(name)}`);
+    
+    try {
+        let moreInfo = order.includes("m");
+        wxsList = {};
+        wu.get(name, code => {
+            try {
+                getZ(code, z => {
+                    try {
+                        const before = "\nvar nv_require=function(){var nnm=";
+                        code = code.slice(code.lastIndexOf(before) + before.length, code.lastIndexOf("if(path&&e_[path]){"));
+                        json = code.slice(0, code.indexOf("};") + 1);
+                        let endOfRequire = code.indexOf("()\r\n") + 4;
+                        if (endOfRequire == 4 - 1) endOfRequire = code.indexOf("()\n") + 3;
+                        code = code.slice(endOfRequire);
+                        let rD = {}, rE = {}, rF = {}, requireInfo = {}, x;
+                        
+                        // 创建VM实例前进行代码检查
+                        if (!code || !json) {
+                            throw new Error("Invalid code structure");
+                        }
+
+                        let vm = new VM({
+                            sandbox: {
+                                d_: rD, 
+                                e_: rE, 
+                                f_: rF, 
+                                _vmRev_(data) {
+                                    [x, requireInfo] = data;
+                                }, 
+                                nv_require(path) {
+                                    return () => path;
+                                }
+                            }
+                        });
+
+                        let vmCode = code + "\n_vmRev_([x," + json + "])";
+                        
+                        try {
+                            vm.run(vmCode);
+                        } catch(e) {
+                            console.warn('VM execution failed:', e.message);
+                            x = {};
+                            requireInfo = {};
+                        }
+
+                        let dir = mainDir || path.dirname(name), pF = [];
+                        
+                        // 处理wxs文件
+                        try {
+                            for (let info in rF) {
+                                if (typeof rF[info] == "function") {
+                                    let name = path.resolve(dir, (info[0] == '/' ? '.' : '') + info);
+                                    let ref = rF[info]();
+                                    pF[ref] = info;
+                                    if (requireInfo[ref]) {
+                                        wu.save(name, doWxs(requireInfo[ref].toString(), info));
+                                    }
+                                }
+                            }
+                        } catch(e) {
+                            console.warn('Failed to process wxs files:', e.message);
+                        }
+
+                        // 处理其他文件
+                        try {
+                            for (let name in rE) {
+                                tryWxml(dir, name, rE[name].f.toString(), z, x, rD[name], wxsList, moreInfo);
+                            }
+                        } catch(e) {
+                            console.warn('Failed to process wxml files:', e.message);
+                        }
+
+                        cb({[name]: 4});
+                    } catch(e) {
+                        console.error('Error in processing:', e);
+                        cb({[name]: 4}); // 继续执行回调
                     }
-                }
-            });
-            let vmCode = code + "\n_vmRev_([x," + json + "])";
-            vm.run(vmCode);
-            let dir = mainDir || path.dirname(name), pF = [];
-            for (let info in rF) if (typeof rF[info] == "function") {
-                let name = path.resolve(dir, (info[0] == '/' ? '.' : '') + info), ref = rF[info]();
-                pF[ref] = info;
-                wu.save(name, doWxs(requireInfo[ref].toString(), info));
+                });
+            } catch(e) {
+                console.error('Error in getZ:', e);
+                cb({[name]: 4}); // 继续执行回调
             }
-            for (let info in rF) if (typeof rF[info] == "object") {
-                let name = path.resolve(dir, (info[0] == '/' ? '.' : '') + info);
-                let res = [], now = rF[info];
-                for (let deps in now) {
-                    let ref = now[deps]();
-                    if (ref.includes(":")) res.push("<wxs module=\"" + deps + "\">\n" + doWxs(requireInfo[ref].toString()) + "\n</wxs>");
-                    else if (pF[ref]) res.push("<wxs module=\"" + deps + "\" src=\"" + wu.toDir(pF[ref], info) + "\" />");
-                    else res.push("<wxs module=\"" + deps + "\" src=\"" + wu.toDir(ref.slice(2), info) + "\" />");
-                    wxsList[name] = res.join("\n");
-                }
-            }
-            for (let name in rE) tryWxml(dir, name, rE[name].f.toString(), z, x, rD[name], wxsList, moreInfo);
-            cb({[name]: 4});
         });
-    });
+    } catch(e) {
+        console.log(`[错误] 处理模板文件失败: ${e.message}`);
+        cb({[name]: 4});
+    }
 }
 
 module.exports = {doFrame: doFrame};

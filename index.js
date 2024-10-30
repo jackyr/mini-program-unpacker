@@ -5,6 +5,7 @@ const yargs = require('yargs');
 const finder = require('@mini-program-unpacker/finder');
 const decrypter = require('@mini-program-unpacker/decrypter');
 const unpacker = require('@mini-program-unpacker/unpacker');
+const { logger } = require('@mini-program-unpacker/common');
 
 // 配置命令行参数
 const argv = yargs
@@ -60,44 +61,37 @@ async function process() {
 
     if (inputType === 'directory') {
       // 目录处理流程
-      console.log('--------------------------------');
-      console.log('开始查找wxapkg文件...');
+      logger.log(logger.LOG_FORMAT.START, '查找wxapkg文件...');
       await finder.processWxapkgs(argv.input, rawDir);
-      console.log('查找wxapkg文件完成');
+      logger.log(logger.LOG_FORMAT.DONE, '查找wxapkg文件完成');
 
-      console.log('--------------------------------');
-      console.log('开始解密wxapkg文件...');
+      logger.log(logger.LOG_FORMAT.START, '解密wxapkg文件...');
       await decrypter.decrypt(rawDir, decDir);
-      console.log('解密wxapkg文件完成');
+      logger.log(logger.LOG_FORMAT.DONE, '解密wxapkg文件完成');
 
-      console.log('--------------------------------');
-      console.log('开始解包wxapkg文件...');
+      logger.log(logger.LOG_FORMAT.START, '解包wxapkg文件...');
       await unpacker.processPath(decDir, unpackDir);
-      console.log('解包wxapkg文件完成');
+      logger.log(logger.LOG_FORMAT.DONE, '解包wxapkg文件完成');
     } else {
       // 单文件处理流程
       fs.mkdirSync(decDir, { recursive: true });
       fs.mkdirSync(unpackDir, { recursive: true });
 
-      console.log('--------------------------------');
-      console.log('开始处理wxapkg文件...');
+      logger.log(logger.LOG_FORMAT.START, '处理wxapkg文件...');
       const rawFile = await finder.processWxapkgs(argv.input, rawDir, { wxid: argv.wxid });
-      console.log('处理wxapkg文件完成');
+      logger.log(logger.LOG_FORMAT.DONE, '处理wxapkg文件完成');
 
-      console.log('--------------------------------');
-      console.log('开始解密wxapkg文件...');
+      logger.log(logger.LOG_FORMAT.START, '解密wxapkg文件...');
       const decFile = path.join(decDir, path.basename(rawFile));
       const actualDecFile = await decrypter.processFile(rawFile, decFile, { wxid: argv.wxid });
-      console.log('解密wxapkg文件完成');
+      logger.log(logger.LOG_FORMAT.DONE, '解密wxapkg文件完成');
 
-      console.log('--------------------------------');
-      console.log('开始解包wxapkg文件...');
+      logger.log(logger.LOG_FORMAT.START, '解包wxapkg文件...');
       await unpacker.wxappUnpackerPkg(actualDecFile, unpackDir);
-      console.log('解包wxapkg文件完成');
+      logger.log(logger.LOG_FORMAT.DONE, '解包wxapkg文件完成');
     }
 
-    console.log('--------------------------------');
-    console.log('所有处理完成!');
+    logger.log(logger.LOG_FORMAT.DONE, '所有处理完成!');
     console.log(`输出目录: ${argv.output}，目录结构如下：`);
     console.log('raw/ - 原始wxapkg文件');
     console.log('dec/ - 解密后的wxapkg文件');

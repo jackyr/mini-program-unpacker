@@ -5,27 +5,19 @@ const wuMl = require("./wuWxml.js");
 const wuSs = require("./wuWxss.js");
 const path = require("path");
 const fs = require("fs");
+const { logger } = require('@mini-program-unpacker/common');
 
 function header(buf) {
-    console.log("\nHeader info:");
-    let firstMark = buf.readUInt8(0);
-    console.log("  firstMark: 0x%s", firstMark.toString(16));
-    let unknownInfo = buf.readUInt32BE(1);
-    console.log("  unknownInfo: ", unknownInfo);
-    let infoListLength = buf.readUInt32BE(5);
-    console.log("  infoListLength: ", infoListLength);
-    let dataLength = buf.readUInt32BE(9);
-    console.log("  dataLength: ", dataLength);
-    let lastMark = buf.readUInt8(13);
-    console.log("  lastMark: 0x%s", lastMark.toString(16));
-    if (firstMark != 0xbe || lastMark != 0xed) throw Error("Magic number is not correct!");
-    return [infoListLength, dataLength];
+    const firstMark = buf.readUInt8(0);
+    const lastMark = buf.readUInt8(13);
+    if (firstMark != 0xbe || lastMark != 0xed) {
+        throw Error("无效的文件格式");
+    }
+    return [buf.readUInt32BE(5), buf.readUInt32BE(9)];
 }
 
 function genList(buf) {
-    console.log("\nFile list info:");
-    let fileCount = buf.readUInt32BE(0);
-    console.log("  fileCount: ", fileCount);
+    const fileCount = buf.readUInt32BE(0);
     let fileInfo = [], off = 4;
     for (let i = 0; i < fileCount; i++) {
         let info = {};
@@ -43,22 +35,23 @@ function genList(buf) {
 }
 
 function saveFile(dir, buf, list) {
-    console.log("Saving files...");
-    for (let info of list)
-        wu.save(path.resolve(dir, (info.name.startsWith("/") ? "." : "") + info.name), buf.slice(info.off, info.off + info.size));
+    logger.log(logger.LOG_FORMAT.START, "解压文件...");
+    for (let info of list) {
+        wu.save(path.resolve(dir, (info.name.startsWith("/") ? "." : "") + info.name), 
+            buf.slice(info.off, info.off + info.size));
+    }
 }
 
 function packDone(dir, cb, order) {
-    console.log("Unpack done.");
-    let weappEvent = new wu.CntEvent, needDelete = {};
+    let weappEvent = new wu.CntEvent;
+    let needDelete = {};
     weappEvent.encount(4);
     weappEvent.add(() => {
         wu.addIO(() => {
-            console.log("Split and make up done.");
             if (!order.includes("d")) {
-                console.log("Delete files...");
-                wu.addIO(() => console.log("Deleted.\n\nFile done."));
-                for (let name in needDelete) if (needDelete[name] >= 8) wu.del(name);
+                for (let name in needDelete) {
+                    if (needDelete[name] >= 8) wu.del(name);
+                }
             }
             cb();
         });
@@ -67,68 +60,51 @@ function packDone(dir, cb, order) {
     function doBack(deletable) {
         for (let key in deletable) {
             if (!needDelete[key]) needDelete[key] = 0;
-            needDelete[key] += deletable[key];//all file have score bigger than 8 will be delete.
+            needDelete[key] += deletable[key];
         }
         weappEvent.decount();
     }
 
     function dealThreeThings(dir, mainDir, nowDir) {
-        console.log("Split app-service.js and make up configs & wxss & wxml & wxs...");
+        logger.log(logger.LOG_FORMAT.PROCESS, "处理配置、脚本和模板文件...");
 
-        //deal config
         if (fs.existsSync(path.resolve(dir, "app-config.json"))) {
             wuCfg.doConfig(path.resolve(dir, "app-config.json"), doBack);
-            console.log('deal config ok');
         }
-        //deal js
         if (fs.existsSync(path.resolve(dir, "app-service.js"))) {
             wuJs.splitJs(path.resolve(dir, "app-service.js"), doBack, mainDir);
-            console.log('deal js ok');
         }
         if (fs.existsSync(path.resolve(dir, "workers.js"))) {
             wuJs.splitJs(path.resolve(dir, "workers.js"), doBack, mainDir);
-            console.log('deal js2 ok');
         }
-        //deal html
         if (mainDir) {
             if (fs.existsSync(path.resolve(dir, "page-frame.js"))) {
                 wuMl.doFrame(path.resolve(dir, "page-frame.js"), doBack, order, mainDir);
-                console.log('deal sub html ok');
             }
             wuSs.doWxss(dir, doBack, mainDir, nowDir);
         } else {
             if (fs.existsSync(path.resolve(dir, "page-frame.html"))) {
                 wuMl.doFrame(path.resolve(dir, "page-frame.html"), doBack, order, mainDir);
-                console.log('deal html ok');
             } else if (fs.existsSync(path.resolve(dir, "app-wxss.js"))) {
                 wuMl.doFrame(path.resolve(dir, "app-wxss.js"), doBack, order, mainDir);
                 if (!needDelete[path.resolve(dir, "page-frame.js")]) {
                     needDelete[path.resolve(dir, "page-frame.js")] = 8;
                 }
-                console.log('deal wxss.js ok');
             } else {
-                throw Error("page-frame-like file is not found in the package by auto.");
+                logger.logError("找不到page-frame相关文件");
             }
-            //Force it run at last, becuase lots of error occured in this part
             wuSs.doWxss(dir, doBack);
-
-            console.log('deal css ok');
         }
-
     }
 
-//This will be the only func running this time, so async is needless.
     if (fs.existsSync(path.resolve(dir, "app-service.js"))) {
-        //weapp
         dealThreeThings(dir);
     } else if (fs.existsSync(path.resolve(dir, "game.js"))) {
-        //wegame
-        console.log("Split game.js and rewrite game.json...");
+        logger.log(logger.LOG_FORMAT.PROCESS, "处理游戏类小程序...");
         let gameCfg = path.resolve(dir, "app-config.json");
         wu.get(gameCfg, cfgPlain => {
             let cfg = JSON.parse(cfgPlain);
             if (cfg.subContext) {
-                console.log("Found subContext, splitting it...")
                 delete cfg.subContext;
                 let contextPath = path.resolve(dir, "subContext.js");
                 wuJs.splitJs(contextPath, () => wu.del(contextPath));
@@ -137,27 +113,20 @@ function packDone(dir, cb, order) {
             wu.del(gameCfg);
         });
         wuJs.splitJs(path.resolve(dir, "game.js"), () => {
-            wu.addIO(() => {
-                console.log("Split and rewrite done.");
-                cb();
-            });
+            wu.addIO(cb);
         });
-    } else {//分包
+    } else {
         let doSubPkg = false;
         for (const orderElement of order) {
             if (orderElement.indexOf('s=') !== -1) {
-                let mainDir = orderElement.substring(2, orderElement.length);
-                console.log("now dir: " + dir);
-                console.log("param of mainDir: " + mainDir);
-
+                let mainDir = orderElement.substring(2);
                 let findDir = function (dir, oldDir) {
                     let files = fs.readdirSync(dir);
                     for (const file of files) {
                         let workDir = path.join(dir, file);
                         if (fs.existsSync(path.resolve(workDir, "app-service.js"))) {
-                            console.log("sub package word dir: " + workDir);
+                            logger.log(logger.LOG_FORMAT.PROCESS, "处理分包...");
                             mainDir = path.resolve(oldDir, mainDir);
-                            console.log("real mainDir: " + mainDir);
                             dealThreeThings(workDir, mainDir, oldDir);
                             doSubPkg = true;
                             return true;
@@ -165,24 +134,20 @@ function packDone(dir, cb, order) {
                             findDir(workDir, oldDir);
                         }
                     }
-
                 };
-
                 findDir(dir, dir);
-
             }
         }
         if (!doSubPkg) {
-            throw new Error("检测到此包是分包后的子包, 请通过 -s 参数指定存放路径后重试, 如 node wuWxapkg.js -s=/xxx/xxx ./testpkg/test-pkg-sub.wxapkg");
+            throw new Error("检测到分包文件，请通过 -s 参数指定主包路径");
         }
     }
 }
 
 function doFile(name, cb, order, outputDir) {
     for (let ord of order) if (ord.startsWith("s=")) global.subPack = ord.slice(3);
-    console.log("Unpack file " + name + "...");
+    logger.log(logger.LOG_FORMAT.START, `解包文件: ${name}`);
     
-    // 使用指定的输出目录，并在其下创建以wxapkg文件名命名的子目录
     let dir;
     if (outputDir) {
         dir = path.join(outputDir, path.basename(name, ".wxapkg"));
@@ -190,7 +155,6 @@ function doFile(name, cb, order, outputDir) {
         dir = path.resolve(name, "..", path.basename(name, ".wxapkg"));
     }
 
-    // 确保输出目录存在
     if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
     }
@@ -210,7 +174,6 @@ module.exports = {
     doFile: (name, cb, order, outputDir) => doFile(name, cb, order, outputDir)
 };
 
-// 命令行调用时的处理
 if (require.main === module) {
     const yargs = require('yargs/yargs');
     const { hideBin } = require('yargs/helpers');

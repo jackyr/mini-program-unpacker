@@ -17,7 +17,7 @@ function wxappUnpackerPkg(filePath, outDir, order = '') {
             // 检查目标产物目录是否已存在
             const targetDir = path.join(outDir, path.basename(filePath, '.wxapkg'));
             if (fs.existsSync(targetDir)) {
-                console.log(`目标目录已存在，跳过解包: ${targetDir}`);
+                console.log(`[跳过] ${path.basename(filePath)} - 目标目录已存在`);
                 resolve();
                 return;
             }
@@ -25,7 +25,7 @@ function wxappUnpackerPkg(filePath, outDir, order = '') {
             wuWxapkg.doFile(
                 filePath, 
                 () => {
-                    console.log(`解包完成: ${filePath}`);
+                    console.log(`[完成] ${path.basename(filePath)}`);
                     resolve();
                 }, 
                 order ? order.split(' ') : [],
@@ -60,9 +60,10 @@ async function processPath(inputPath, outputPath, options = {}) {
         const stat = fs.statSync(inputPath);
         
         if (stat.isDirectory()) {
-            console.log(`查找目录: ${inputPath}`);
             const files = findWxapkgFiles(inputPath);
-            console.log(`找到 ${files.length} 个 wxapkg 文件`);
+            if(files.length > 0) {
+                console.log(`[开始] 发现 ${files.length} 个 wxapkg 文件待处理`);
+            }
             
             await Promise.all(files.map(file => 
                 wxappUnpackerPkg(file, outputPath, options.order)
@@ -71,7 +72,7 @@ async function processPath(inputPath, outputPath, options = {}) {
             if (inputPath.endsWith(`.${FILE_FORMAT}`)) {
                 await wxappUnpackerPkg(inputPath, outputPath, options.order);
             } else {
-                throw new Error('错误: 文件必须是 .wxapkg 格式');
+                throw new Error('输入文件必须是 .wxapkg 格式');
             }
         }
     } catch (error) {
@@ -103,7 +104,7 @@ if (require.main === module) {
 
     processPath(argv.input, argv.output, { order: argv.order })
         .catch(error => {
-            console.error('处理路径出错:', error);
+            console.error('[错误]', error.message);
             process.exit(1);
         });
 }

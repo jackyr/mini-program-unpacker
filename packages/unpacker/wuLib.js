@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require('os');
 let platform = os.platform();
+const { logger } = require('@mini-program-unpacker/common');
 
 class CntEvent {
     constructor() {
@@ -87,7 +88,7 @@ function save(name, content) {
     mkdirs(path.dirname(name), () => ioLimit.runWithCb(fs.writeFile.bind(fs), name, content, err => {
         if (err) {
             if (platform.indexOf('win') != -1) {
-              console.log('Save file error: ' + err);
+                logger.logError(`保存文件失败: ${err}`);
             } else {
               throw Error('Save file error: ' + err);
             }

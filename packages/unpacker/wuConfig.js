@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const {VM} = require('vm2');
+const { logger } = require('@mini-program-unpacker/common');
 
 function getWorkerPath(name) {
     let code = fs.readFileSync(name, {encoding: 'utf8'});
@@ -20,7 +21,7 @@ function getWorkerPath(name) {
     });
     vm.run(code.slice(code.indexOf("define(")));
     if (commPath.length > 0) commPath = commPath.slice(0, -1);
-    console.log("Worker path: \"" + commPath + "\"");
+    logger.log(logger.LOG_FORMAT.INFO, `Worker path: "${commPath}"`);
     return commPath;
 }
 
@@ -60,7 +61,7 @@ function doConfig(configFile, cb) {
             }
             app.subPackages = subPackages;
             app.pages = pages;
-            console.log("=======================================================\n这个小程序采用了分包\n子包个数为: ", app.subPackages.length, "\n=======================================================");
+            logger.log(logger.LOG_FORMAT.INFO, `检测到分包小程序，子包数量: ${app.subPackages.length}`);
         }
         if (e.navigateToMiniProgramAppIdList) app.navigateToMiniProgramAppIdList = e.navigateToMiniProgramAppIdList;
         if (fs.existsSync(path.resolve(dir, "workers.js"))) app.workers = getWorkerPath(path.resolve(dir, "workers.js"));
