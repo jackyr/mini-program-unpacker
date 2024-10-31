@@ -48,7 +48,7 @@ function doWxss(dir, cb, mainDir, nowDir) {
 					else return "";
 				}
                 if (!actualPure[data] && !blockCss.includes(wu.changeExt(wu.toDir(cssFile, frameName), ""))) {
-                    console.log("Regard " + cssFile + " as pure import file.");
+                    // console.log("Regard " + cssFile + " as pure import file.");
                     actualPure[data] = cssFile;
 				}
 				return "";

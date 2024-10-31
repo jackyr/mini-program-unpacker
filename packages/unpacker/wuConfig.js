@@ -34,34 +34,48 @@ function doConfig(configFile, cb) {
         k.unshift(wu.changeExt(e.entryPagePath));
         let app = {pages: k, window: e.global && e.global.window, tabBar: e.tabBar, networkTimeout: e.networkTimeout};
         if (e.subPackages) {
-            let subPackages = [];
-            let pages = app.pages;
-            for (let subPackage of e.subPackages) {
-                let root = subPackage.root;
-                let lastChar = root.substr(root.length - 1, 1);
-                if (lastChar !== '/') {
-                    root = root + '/';
-                }
-                let firstChar = root.substr(0, 1);
-                if (firstChar === '/') {
-                    root = root.substring(1);
-                }
-                let newPages = [];
-                for (let page of subPackage.pages) {
-                    let items = page.replace(root, '');
-                    newPages.push(items);
-                    let subIndex = pages.indexOf(root + items);
-                    if (subIndex !== -1) {
-                        pages.splice(subIndex, 1);
+            try {
+                let subPackages = [];
+                let pages = app.pages;
+                for (let subPackage of e.subPackages) {
+                    if (!subPackage || !subPackage.pages) {
+                        logger.log(logger.LOG_FORMAT.WARN, `无效的分包配置: ${JSON.stringify(subPackage)}`);
+                        continue;
+                    }
+
+                    let root = subPackage.root;
+                    let lastChar = root.substr(root.length - 1, 1);
+                    if (lastChar !== '/') {
+                        root = root + '/';
+                    }
+                    let firstChar = root.substr(0, 1);
+                    if (firstChar === '/') {
+                        root = root.substring(1);
+                    }
+                    
+                    try {
+                        let newPages = [];
+                        for (let page of subPackage.pages) {
+                            let items = page.replace(root, '');
+                            newPages.push(items);
+                            let subIndex = pages.indexOf(root + items);
+                            if (subIndex !== -1) {
+                                pages.splice(subIndex, 1);
+                            }
+                        }
+                        subPackage.root = root;
+                        subPackage.pages = newPages;
+                        subPackages.push(subPackage);
+                    } catch (pageError) {
+                        logger.log(logger.LOG_FORMAT.ERROR, `处理分包页面时出错: ${pageError.message}, 分包信息: ${JSON.stringify(subPackage)}`);
                     }
                 }
-                subPackage.root = root;
-                subPackage.pages = newPages;
-                subPackages.push(subPackage);
+                app.subPackages = subPackages;
+                app.pages = pages;
+                logger.log(logger.LOG_FORMAT.INFO, `检测到分包小程序，子包数量: ${app.subPackages.length}`);
+            } catch (error) {
+                logger.log(logger.LOG_FORMAT.ERROR, `处理分包配置时出错: ${error.message}`);
             }
-            app.subPackages = subPackages;
-            app.pages = pages;
-            logger.log(logger.LOG_FORMAT.INFO, `检测到分包小程序，子包数量: ${app.subPackages.length}`);
         }
         if (e.navigateToMiniProgramAppIdList) app.navigateToMiniProgramAppIdList = e.navigateToMiniProgramAppIdList;
         if (fs.existsSync(path.resolve(dir, "workers.js"))) app.workers = getWorkerPath(path.resolve(dir, "workers.js"));
