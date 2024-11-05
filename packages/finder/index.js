@@ -62,53 +62,63 @@ async function processWxapkgs(srcPath, destDir, options = {}) {
             fs.copyFileSync(srcPath, destPath);
             console.log(`已复制: ${newFileName}`);
             return destPath; // 返回目标文件路径
-        }
-
-        // 处理目录
-        const wxids = fs.readdirSync(srcPath);
-        for (const wxid of wxids) {
-            const wxidPath = path.join(srcPath, wxid);
+        } else {
+            // 处理目录
+            let wxids;
             
-            // 检查是否是目录且符合wxid格式
-            if (!fs.statSync(wxidPath).isDirectory() || !wxid.startsWith('wx')) {
-                continue;
+            // 检查srcPath是否本身就是一个wxid目录
+            const baseName = path.basename(srcPath);
+            if (baseName.match(/^wx[a-f0-9]{16}$/)) {
+                wxids = [baseName];
+                srcPath = path.dirname(srcPath); // 将srcPath调整为父目录
+            } else {
+                wxids = fs.readdirSync(srcPath);
             }
-            
-            // 遍历wxid下的子目录
-            const subDirs = fs.readdirSync(wxidPath);
-            for (const subDir of subDirs) {
-                const appPath = path.join(wxidPath, subDir, '__APP__.wxapkg');
+
+            for (const wxid of wxids) {
+                const wxidPath = path.join(srcPath, wxid);
                 
-                // 检查文件是否存在
-                if (!fs.existsSync(appPath)) {
+                // 检查是否是目录且符合wxid格式
+                if (!fs.statSync(wxidPath).isDirectory() || !wxid.match(/^wx[a-f0-9]{16}$/)) {
                     continue;
                 }
                 
-                // 获取文件创建时间
-                const stats = fs.statSync(appPath);
-                const createTime = new Date(stats.birthtime);
-                
-                // 格式化时间
-                const dateStr = createTime.toLocaleString('zh-CN', {
-                    year: '2-digit',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour12: false
-                }).replace(/[\/\s:]/g, '');
-                const timeStr = createTime.toLocaleString('zh-CN', {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false
-                }).replace(/[\/\s:]/g, '');
-                
-                // 构建新文件名
-                const newFileName = `${dateStr}-${timeStr}-${wxid}.wxapkg`;
-                const destPath = path.join(destDir, newFileName);
-                
-                // 复制文件
-                fs.copyFileSync(appPath, destPath);
-                console.log(`已复制: ${newFileName}`);
+                // 遍历wxid下的子目录
+                const subDirs = fs.readdirSync(wxidPath);
+                for (const subDir of subDirs) {
+                    const appPath = path.join(wxidPath, subDir, '__APP__.wxapkg');
+                    
+                    // 检查文件是否存在
+                    if (!fs.existsSync(appPath)) {
+                        continue;
+                    }
+                    
+                    // 获取文件创建时间
+                    const stats = fs.statSync(appPath);
+                    const createTime = new Date(stats.birthtime);
+                    
+                    // 格式化时间
+                    const dateStr = createTime.toLocaleString('zh-CN', {
+                        year: '2-digit',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour12: false
+                    }).replace(/[\/\s:]/g, '');
+                    const timeStr = createTime.toLocaleString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit',
+                        hour12: false
+                    }).replace(/[\/\s:]/g, '');
+                    
+                    // 构建新文件名
+                    const newFileName = `${dateStr}-${timeStr}-${wxid}.wxapkg`;
+                    const destPath = path.join(destDir, newFileName);
+                    
+                    // 复制文件
+                    fs.copyFileSync(appPath, destPath);
+                    console.log(`已复制: ${newFileName}`);
+                }
             }
         }
         console.log('处理完成！');
